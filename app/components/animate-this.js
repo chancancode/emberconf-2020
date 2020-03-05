@@ -1,81 +1,95 @@
 import Component from '@glimmer/component';
+import { tracked } from '@glimmer/tracking';
 import { action } from '@ember/object';
 import d3 from 'd3';
 
 export default class AnimateThisComponent extends Component {
+  width = 960;
+  height = 500;
+
+  constructor(...args) {
+    super(...args);
+
+    let nodes = this.nodes = [];
+    let colors = d3.scale.category10();
+
+    for (let i=0; i<200; i++) {
+      let color = colors(i % 3);
+
+      if (i === 0) {
+        nodes.push(new Node(0, color, true));
+      } else {
+        nodes.push(new Node(Math.random() * 12 + 4, color));
+      }
+    }
+
+    this.root = nodes[0];
+    this.children = nodes.slice(1);
+    this.force = d3.layout.force()
+      .gravity(0.05)
+      .charge((d, i) => i ? 0 : -2000)
+      .nodes(nodes)
+      .size([this.width, this.height])
+      .on("tick", this.onTick)
+      .start();
+  }
+
   @action
-  showTheDots(el) {
-    // From https://bl.ocks.org/mbostock/3231298
-    // Released under the GNU General Public License, version 3
-    var width = 960,
-    height = 500;
+  onTick() {
+    let q = d3.geom.quadtree(this.nodes);
 
-    var nodes = d3.range(200).map(function() { return {radius: Math.random() * 12 + 4}; }),
-        root = nodes[0],
-        color = d3.scale.category10();
-
-    root.radius = 0;
-    root.fixed = true;
-
-    var force = d3.layout.force()
-        .gravity(0.05)
-        .charge(function(d, i) { return i ? 0 : -2000; })
-        .nodes(nodes)
-        .size([width, height]);
-
-    force.start();
-
-    var svg = d3.select(el).append("svg")
-        .attr("width", width)
-        .attr("height", height);
-
-    svg.selectAll("circle")
-        .data(nodes.slice(1))
-      .enter().append("circle")
-        .attr("r", function(d) { return d.radius; })
-        .style("fill", function(d, i) { return color(i % 3); });
-
-    force.on("tick", function(e) {
-      var q = d3.geom.quadtree(nodes),
-          i = 0,
-          n = nodes.length;
-
-      while (++i < n) q.visit(collide(nodes[i]));
-
-      svg.selectAll("circle")
-          .attr("cx", function(d) { return d.x; })
-          .attr("cy", function(d) { return d.y; });
+    this.children.forEach(node => {
+      q.visit(node.collide());
     });
+  }
 
-    svg.on("mousemove", function() {
-      var p1 = d3.mouse(this);
-      root.px = p1[0];
-      root.py = p1[1];
-      force.resume();
-    });
+  @action
+  onMouseMove(event) {
+    let { left, top } = event.target.getBoundingClientRect();
+    this.root.px = event.clientX - left;
+    this.root.py = event.clientY - top;
+    this.force.resume();
+  }
 
-    function collide(node) {
-      var r = node.radius + 16,
-          nx1 = node.x - r,
-          nx2 = node.x + r,
-          ny1 = node.y - r,
-          ny2 = node.y + r;
-      return function(quad, x1, y1, x2, y2) {
-        if (quad.point && (quad.point !== node)) {
-          var x = node.x - quad.point.x,
-              y = node.y - quad.point.y,
-              l = Math.sqrt(x * x + y * y),
-              r = node.radius + quad.point.radius;
-          if (l < r) {
-            l = (l - r) / l * .5;
-            node.x -= x *= l;
-            node.y -= y *= l;
-            quad.point.x += x;
-            quad.point.y += y;
-          }
+  willDestroy() {
+    this.force.stop().on("tick", null);
+  }
+}
+
+class Node {
+  @tracked x = 0;
+  @tracked y = 0;
+
+  constructor(radius, color, fixed = false) {
+    this.radius = radius;
+    this.color = color;
+    this.fixed = fixed;
+  }
+
+  collide() {
+    let r = this.radius + 16;
+    let nx1 = this.x - r;
+    let nx2 = this.x + r;
+    let ny1 = this.y - r;
+    let ny2 = this.y + r;
+
+    return (quad, x1, y1, x2, y2) => {
+      if (quad.point && (quad.point !== this)) {
+        let x = this.x - quad.point.x;
+        let y = this.y - quad.point.y;
+        let l = Math.sqrt(x * x + y * y);
+        let r = this.radius + quad.point.radius;
+
+        if (l < r) {
+          l = (l - r) / l * .5;
+          this.x -= x *= l;
+          this.y -= y *= l;
+          quad.point.x += x;
+          quad.point.y += y;
         }
-        return x1 > nx2 || x2 < nx1 || y1 > ny2 || y2 < ny1;
-      };
+      }
+
+      return x1 > nx2 || x2 < nx1 || y1 > ny2 || y2 < ny1;
     }
   }
 }

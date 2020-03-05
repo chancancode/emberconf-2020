@@ -1,1 +1,5 @@
-<div class="animate-this" {{did-insert this.showTheDots}}></div>
+<svg width={{this.width}} height={{this.height}} {{on "mousemove" this.onMouseMove}}>
+  {{#each this.children as |n|}}
+    <circle cx={{n.x}} cy={{n.y}} r={{n.radius}} fill={{n.color}} />
+  {{/each}}
+</svg>
